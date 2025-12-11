@@ -50,69 +50,74 @@ To make the Virtual Environment open termninal with this project directory and t
 ```
 main()
   │
-  ├── load_cache()           # Load city coordinates cache
-  ├── load_sales_data()      # Load Excel/CSV file
-  ├── clean_sales_data()     # Clean & preprocess data
+  ├── load_cache()                 # Warm geocode cache from disk
+  ├── load_sales_data()            # Load Excel/CSV file
+  ├── clean_sales_data()           # Normalize column names, types, derived fields
+  ├── initialize helpers
   │       │
-  │       └── get_city_coordinates()  # Used during map generation for lat/lon
+  │       ├── _normalize_*()       # Shared selection-cleaning helpers
+  │       └── get_city_coordinates()# Used later during geo plotting
   │
   └── create_app()
           │
-          ├── get_app_layout()        # Builds layout: filters, KPIs, charts, table
-          └── register_callbacks()   # Hooks callbacks for interactivity
+          ├── get_app_layout()      # Builds layout: filters, KPIs, charts, table, footer
+          └── register_callbacks()
                   │
-                  ├── update_kpis()       # Updates total sales, revenue, top model, avg price
-                  └── update_charts()     # Updates trend chart, model performance, fuel chart, geo map, table
+                  ├── update_kpis()   # Filters data and populates KPI cards
+                  └── update_charts() # Filters data, renders charts/table, uses get_city_coordinates()
 ```
 
 ## Function Documentation
 
-| Function                                                                                        | Purpose                                                                                                                                           |
-| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `load_cache()`                                                                                  | Loads cached city coordinates from JSON. Initializes empty cache if file is missing or invalid.                                                   |
-| `save_cache()`                                                                                  | Saves in-memory city coordinates to JSON.                                                                                                         |
-| `get_city_coordinates(city)`                                                                    | Fetches latitude and longitude for a city, using cache if available.                                                                              |
-| `load_sales_data(file_path)`                                                                    | Loads sales data from Excel or CSV.                                                                                                               |
-| `clean_sales_data(df)`                                                                          | Cleans and preprocesses sales data: standardizes column names, converts dates, fills missing values, and creates a human-readable `Month` column. |
-| `create_app(df_clean)`                                                                          | Creates the Dash app instance, sets layout, and registers callbacks.                                                                              |
-| `get_app_layout(df_clean)`                                                                      | Defines the app layout: filters, KPIs, charts, table, footer.                                                                                     |
-| `filter_data(df_clean, start_date, end_date, selected_models, selected_fuel, selected_segment)` | Filters the DataFrame based on user selections for KPIs, charts, and table.                                                                       |
-| `register_callbacks(app, df_clean)`                                                             | Registers all Dash callbacks to update KPIs, charts, and table dynamically.                                                                       |
-| `main()`                                                                                        | Entry point: loads cache, loads and cleans data, creates Dash app, and runs server.                                                               |
+| Function                                                                                                       | Purpose                                                                                                                                          |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `load_cache()`                                                                                                 | Loads cached city coordinates from JSON. Initializes an empty cache when the file is missing/invalid.                                            |
+| `save_cache()`                                                                                                 | Persists the in-memory coordinate cache to disk.                                                                                                 |
+| `get_city_coordinates(city)`                                                                                   | Returns `(lat, lon)` for a city via cache-first lookup, falling back to Nominatim and refreshing the cache on success.                           |
+| `_normalize_list_selection(selection)`                                                                         | Utility that converts multi-select inputs (e.g., models, cities) into a sanitized list, ignoring `"All"` and duplicates.                         |
+| `_normalize_scalar_selection(selection)`                                                                       | Utility that returns `None` when a scalar dropdown is `"All"`/empty so downstream filters can skip it.                                           |
+| `_build_empty_figure(title, subtitle)`                                                                         | Generates a placeholder Plotly figure used when no data is available for a chart.                                                                |
+| `load_sales_data(file_path)`                                                                                   | Loads sales data from Excel/CSV based on file extension, raising if unsupported.                                                                 |
+| `clean_sales_data(df)`                                                                                         | Cleans and preprocesses sales data: standardizes names, parses dates, fills categorical defaults, de-noises currency field, and derives `Month`. |
+| `create_app(df_clean)`                                                                                         | Creates the Dash app instance, applies layout, and registers callbacks.                                                                          |
+| `get_app_layout(df_clean)`                                                                                     | Defines the UI layout: filters (date/model/fuel/segment/city), KPI cards, charts, table, and footer.                                             |
+| `filter_data(df_clean, start_date, end_date, selected_models, selected_fuel, selected_segment, selected_city)` | Applies all active filters (dates, models, fuel, segment, city) using the normalization helpers to drive KPIs and charts.                        |
+| `register_callbacks(app, df_clean)`                                                                            | Registers the Dash callbacks (`update_kpis`, `update_charts`) that orchestrate filtering, aggregation, chart rendering, and map geocoding.       |
+| `main()`                                                                                                       | Entry point: loads cache and data, cleans it, builds the Dash app, and runs the server.                                                          |
 
 ## Dash App Flow
 
-1) main() is executed → loads city cache, loads sales data, cleans data, and creates the Dash app.
+1. main() is executed → loads city cache, loads sales data, cleans data, and creates the Dash app.
 
-2) create_app() calls get_app_layout() to define the dashboard layout.
+2. create_app() calls get_app_layout() to define the dashboard layout.
 
-3) register_callbacks() hooks up all user interactions:
+3. register_callbacks() hooks up all user interactions:
 
-    - KPI updates → update_kpis()
+   - KPI updates → update_kpis()
 
-    - Charts & table updates → update_charts()
+   - Charts & table updates → update_charts()
 
-4) User interacts with filters → callbacks are triggered → filtered data is passed to functions for charts, KPIs, and tables.
+4. User interacts with filters → callbacks are triggered → filtered data is passed to functions for charts, KPIs, and tables.
 
-5) Geographic data for the map is fetched via get_city_coordinates(). Cache is updated if new cities are found.
+5. Geographic data for the map is fetched via get_city_coordinates(). Cache is updated if new cities are found.
 
 ## Usage & Gotchas
 
 - Input file: By default, the dashboard reads Sales Dashboard Tata Motors.xlsx. If you want to use a different file:
 
-    - Update the file_path variable in app.py.
+  - Update the file_path variable in app.py.
 
-    - Supported formats: .xlsx, .xls, .csv.
+  - Supported formats: .xlsx, .xls, .csv.
 
 - City coordinates cache:
 
-    - Stored in city_coordinates.json to reduce geocoding API calls.
+  - Stored in city_coordinates.json to reduce geocoding API calls.
 
-    - If adding new cities in your dataset, this file will automatically update when the dashboard runs.
+  - If adding new cities in your dataset, this file will automatically update when the dashboard runs.
 
 - Date formatting:
 
-    - The Month column is formatted for display (Jan 2025) but for chart grouping, ensure your Date_of_Sold column is in datetime format.
+  - The Month column is formatted for display (Jan 2025) but for chart grouping, ensure your Date_of_Sold column is in datetime format.
 
 - Dependencies: Ensure all required packages are installed (pandas, dash, plotly, geopy, babel, dash-bootstrap-components, openpyxl).
 

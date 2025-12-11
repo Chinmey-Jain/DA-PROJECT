@@ -186,7 +186,6 @@ def create_app(df_clean):
         external_stylesheets=[dbc.themes.BOOTSTRAP],
         title="Tata Motors Sales Dashboard",
     )
-
     # Layout
     app.layout = get_app_layout(df_clean)
 
@@ -384,7 +383,7 @@ def get_app_layout(df_clean):
             dbc.Row(
                 dbc.Col(
                     html.Div(
-                        "Tata Motors Sales Dashboard | Made by Group 10",
+                        "Tata Motors Sales Dashboard | Made by ",
                         style={
                             "textAlign": "center",
                             "padding": "10px 0",
