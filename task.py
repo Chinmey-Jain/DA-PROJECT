@@ -362,12 +362,12 @@ def get_app_layout(df_clean):
             dbc.Row(
                 [
                     dbc.Col(
-                        dcc.Graph(id="segment-pie-chart"), width=4, className="mb-4"
+                        dcc.Graph(id="fuel-type-bar-chart"), width=4, className="mb-4"
                     ),
+                    dbc.Col(dcc.Graph(id="fuel-type-chart"), width=4, className="mb-4"),
                     dbc.Col(
                         dcc.Graph(id="model-performance"), width=4, className="mb-4"
                     ),
-                    dbc.Col(dcc.Graph(id="fuel-type-chart"), width=4, className="mb-4"),
                 ]
             ),
             # Data table
@@ -539,7 +539,7 @@ def register_callbacks(app, df_clean):
             Output("avg-price-model-chart", "figure"),
             Output("geo-map", "figure"),
             Output("city-sales-volume-chart", "figure"),
-            Output("segment-pie-chart", "figure"),
+            Output("fuel-type-bar-chart", "figure"),
             Output("model-performance", "figure"),
             Output("fuel-type-chart", "figure"),
             Output("sales-data-table", "data"),
@@ -589,22 +589,32 @@ def register_callbacks(app, df_clean):
                 placeholder,  # avg-price-model-chart
                 _build_empty_figure("Sales by City (Revenue)", empty_message),
                 _build_empty_figure("Sales by City (Volume)", empty_message),
-                _build_empty_figure("Customer Segment", empty_message),
+                _build_empty_figure("Sales by Fuel Type", empty_message),
                 placeholder,  # model-performance
                 placeholder,  # fuel-type-chart
                 [],
             )
-        # Customer Segment Pie Chart
-        segment_data = filtered_df["Customer_Segment"].value_counts().reset_index()
-        segment_data.columns = ["Customer_Segment", "Count"]
-        segment_pie_fig = go.Figure(
-            go.Pie(
-                labels=segment_data["Customer_Segment"],
-                values=segment_data["Count"],
-                hole=0.5,
+        # Fuel Type Horizontal Bar Chart
+        fuel_bar_data = filtered_df["Fuel_Type"].value_counts().reset_index()
+        fuel_bar_data.columns = ["Fuel_Type", "Count"]
+        fuel_type_bar_fig = go.Figure(
+            go.Bar(
+                x=fuel_bar_data["Count"],
+                y=fuel_bar_data["Fuel_Type"],
+                orientation="h",
+                marker_color="#43A047",
+                text=fuel_bar_data["Count"],
+                textposition="outside",
+                name="Sales by Fuel Type",
             )
         )
-        segment_pie_fig.update_layout(title="Customer Segment", title_x=0.5)
+        fuel_type_bar_fig.update_layout(
+            title="Sales by Fuel Type",
+            title_x=0.5,
+            xaxis_title="Number of Sales",
+            yaxis_title="Fuel Type",
+            margin=dict(l=40, r=20, t=60, b=40),
+        )
 
         # Sales Trend
         monthly_data = (
@@ -829,7 +839,7 @@ def register_callbacks(app, df_clean):
             avg_price_fig,  # avg-price-model-chart
             geo_fig,  # geo-map (Sales by City Revenue)
             city_sales_volume_fig,  # city-sales-volume-chart
-            segment_pie_fig,  # segment-pie-chart
+            fuel_type_bar_fig,  # fuel-type-bar-chart
             model_fig,  # model-performance
             fuel_fig,  # fuel-type-chart
             table_data,
