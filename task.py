@@ -335,7 +335,16 @@ def get_app_layout(df_clean):
             ),
             # Charts
             dbc.Row(
-                [dbc.Col(dcc.Graph(id="sales-trend-chart"), width=12, className="mb-4")]
+                [
+                    dbc.Col(
+                        dcc.Graph(id="sales-trend-chart"), width=6, className="mb-4"
+                    ),
+                    dbc.Col(
+                        dcc.Graph(id="avg-price-model-chart"),
+                        width=6,
+                        className="mb-4",
+                    ),
+                ]
             ),
             dbc.Row(
                 [
@@ -511,6 +520,7 @@ def register_callbacks(app, df_clean):
     @app.callback(
         [
             Output("sales-trend-chart", "figure"),
+            Output("avg-price-model-chart", "figure"),
             Output("model-performance", "figure"),
             Output("fuel-type-chart", "figure"),
             Output("geo-map", "figure"),
@@ -560,6 +570,7 @@ def register_callbacks(app, df_clean):
                 placeholder,
                 placeholder,
                 placeholder,
+                placeholder,
                 _build_empty_figure("Sales by City", empty_message),
                 [],
             )
@@ -573,6 +584,10 @@ def register_callbacks(app, df_clean):
             )
             .reset_index()
         )
+        monthly_data["Revenue_Crore"] = monthly_data["Total_Revenue"] / 10_000_000
+        monthly_data["Revenue_Label"] = monthly_data["Total_Revenue"].apply(
+            lambda value: format_currency(value, "INR", locale="en_IN")
+        )
         trend_fig = go.Figure()
         trend_fig.add_trace(
             go.Scatter(
@@ -585,10 +600,12 @@ def register_callbacks(app, df_clean):
         trend_fig.add_trace(
             go.Scatter(
                 x=monthly_data["Date_of_Sold"],
-                y=monthly_data["Total_Revenue"] / 1_000_000,
-                name="Revenue (₹ M)",
+                y=monthly_data["Revenue_Crore"],
+                name="Revenue (₹ Cr)",
                 yaxis="y2",
                 line=dict(color="#ff7f0e", width=3),
+                customdata=monthly_data["Revenue_Label"],
+                hovertemplate="Month: %{x|%b %Y}<br>Revenue: %{customdata}<extra></extra>",
             )
         )
         trend_fig.update_layout(
@@ -596,8 +613,44 @@ def register_callbacks(app, df_clean):
             title_x=0.5,
             xaxis_title="Month",
             yaxis_title="Sales Volume",
-            yaxis2=dict(title="Revenue (₹ M)", overlaying="y", side="right"),
+            yaxis2=dict(title="Revenue (₹ Cr)", overlaying="y", side="right"),
             hovermode="x unified",
+        )
+
+        # Avg Price by Model
+        avg_price_data = (
+            filtered_df.groupby("Model")["Ex_Showroom_Price"].mean().reset_index()
+        )
+        avg_price_data = avg_price_data.sort_values(
+            "Ex_Showroom_Price", ascending=False
+        )
+        avg_price_text = avg_price_data["Ex_Showroom_Price"].apply(
+            lambda value: format_currency(value, "INR", locale="en_IN")
+        )
+        avg_price_fig = go.Figure(
+            go.Bar(
+                x=avg_price_data["Model"],
+                y=avg_price_data["Ex_Showroom_Price"],
+                marker_color="#8E24AA",
+                name="Avg Price",
+                text=avg_price_text,
+                textposition="outside",
+                customdata=avg_price_text,
+                hovertemplate="Model: %{x}<br>Avg Price: %{customdata}<extra></extra>",
+            )
+        )
+        avg_price_fig.update_layout(
+            title="Average Price by Model",
+            title_x=0.5,
+            xaxis_title="Model",
+            yaxis=dict(
+                title="Average Price (₹ L)",
+                tickprefix="₹ ",
+                separatethousands=True,
+                tickformat="~s",
+                tickvals=[100000, 500000, 1000000, 1500000, 2000000, 2500000],
+                ticktext=["1", "5", "10", "15", "20", "25"],
+            ),
         )
 
         # Model Performance
@@ -642,6 +695,10 @@ def register_callbacks(app, df_clean):
                 "Sales by City", "No city level data for this selection"
             )
         else:
+            city_data["Revenue_Label"] = city_data["Total_Revenue"].apply(
+                lambda value: format_currency(value, "INR", locale="en_IN")
+            )
+            city_data["Revenue_Crore"] = city_data["Total_Revenue"] / 10_000_000
             coordinate_pairs = [
                 coords if coords and len(coords) == 2 else (None, None)
                 for coords in city_data["Dealer_City"].apply(get_city_coordinates)
@@ -654,6 +711,15 @@ def register_callbacks(app, df_clean):
                     "Sales by City", "Unable to resolve city coordinates"
                 )
             else:
+                sales_counts = city_data["Total_Sales"]
+                min_sales = sales_counts.min()
+                max_sales = sales_counts.max()
+                if max_sales == min_sales:
+                    marker_sizes = [18] * len(sales_counts)
+                else:
+                    marker_sizes = (
+                        10 + ((sales_counts - min_sales) / (max_sales - min_sales)) * 20
+                    )
                 geo_fig = go.Figure(
                     go.Scattergeo(
                         lat=city_data["lat"],
@@ -662,19 +728,16 @@ def register_callbacks(app, df_clean):
                             city_data["Dealer_City"]
                             + "<br>Sales: "
                             + city_data["Total_Sales"].astype(str)
-                            + "<br>Revenue: ₹"
-                            + (city_data["Total_Revenue"] / 1_000_000)
-                            .round(2)
-                            .astype(str)
-                            + "M"
+                            + "<br>Revenue: "
+                            + city_data["Revenue_Label"]
                         ),
                         mode="markers",
                         marker=dict(
-                            size=city_data["Total_Sales"] * 2,
-                            color=city_data["Total_Revenue"],
+                            size=marker_sizes,
+                            color=city_data["Revenue_Crore"],
                             colorscale="Viridis",
                             showscale=True,
-                            colorbar_title="Revenue (₹)",
+                            colorbar_title="Revenue (₹ Cr)",
                         ),
                     )
                 )
@@ -702,7 +765,14 @@ def register_callbacks(app, df_clean):
         table_data["Date_of_Sold"] = table_data["Date_of_Sold"].dt.strftime("%d %b %Y")
         table_data = table_data.to_dict("records")
 
-        return trend_fig, model_fig, fuel_fig, geo_fig, table_data
+        return (
+            trend_fig,
+            avg_price_fig,
+            model_fig,
+            fuel_fig,
+            geo_fig,
+            table_data,
+        )
 
 
 def initialize_dashboard() -> Dash:
