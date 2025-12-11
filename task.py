@@ -252,6 +252,7 @@ def get_app_layout(df_clean):
                                     for f in sorted(df_clean["Fuel_Type"].unique())
                                 ],
                                 value="All",
+                                multi=True,
                             ),
                         ],
                         width=3,
@@ -269,6 +270,7 @@ def get_app_layout(df_clean):
                                     )
                                 ],
                                 value="All",
+                                multi=True,
                             ),
                         ],
                         width=3,
@@ -334,25 +336,39 @@ def get_app_layout(df_clean):
                 className="mb-4",
             ),
             # Charts
+            # Row 1
             dbc.Row(
                 [
                     dbc.Col(
                         dcc.Graph(id="sales-trend-chart"), width=6, className="mb-4"
                     ),
                     dbc.Col(
-                        dcc.Graph(id="avg-price-model-chart"),
-                        width=6,
-                        className="mb-4",
+                        dcc.Graph(id="avg-price-model-chart"), width=6, className="mb-4"
                     ),
                 ]
             ),
+            # Row 2
             dbc.Row(
                 [
-                    dbc.Col(dcc.Graph(id="model-performance"), width=4),
-                    dbc.Col(dcc.Graph(id="geo-map"), width=4),
-                    dbc.Col(dcc.Graph(id="fuel-type-chart"), width=4),
-                ],
-                className="mb-4",
+                    dbc.Col(
+                        dcc.Graph(id="city-sales-volume-chart"),
+                        width=6,
+                        className="mb-4",
+                    ),
+                    dbc.Col(dcc.Graph(id="geo-map"), width=6, className="mb-4"),
+                ]
+            ),
+            # Row 3
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dcc.Graph(id="segment-pie-chart"), width=4, className="mb-4"
+                    ),
+                    dbc.Col(
+                        dcc.Graph(id="model-performance"), width=4, className="mb-4"
+                    ),
+                    dbc.Col(dcc.Graph(id="fuel-type-chart"), width=4, className="mb-4"),
+                ]
             ),
             # Data table
             dbc.Row(
@@ -428,13 +444,13 @@ def filter_data(
     if model_values:
         filtered_df = filtered_df[filtered_df["Model"].isin(model_values)]
 
-    fuel_value = _normalize_scalar_selection(selected_fuel)
-    if fuel_value:
-        filtered_df = filtered_df[filtered_df["Fuel_Type"] == fuel_value]
+    fuel_values = _normalize_list_selection(selected_fuel)
+    if fuel_values:
+        filtered_df = filtered_df[filtered_df["Fuel_Type"].isin(fuel_values)]
 
-    segment_value = _normalize_scalar_selection(selected_segment)
-    if segment_value:
-        filtered_df = filtered_df[filtered_df["Customer_Segment"] == segment_value]
+    segment_values = _normalize_list_selection(selected_segment)
+    if segment_values:
+        filtered_df = filtered_df[filtered_df["Customer_Segment"].isin(segment_values)]
 
     city_values = _normalize_list_selection(selected_city)
     if city_values:
@@ -521,9 +537,11 @@ def register_callbacks(app, df_clean):
         [
             Output("sales-trend-chart", "figure"),
             Output("avg-price-model-chart", "figure"),
+            Output("geo-map", "figure"),
+            Output("city-sales-volume-chart", "figure"),
+            Output("segment-pie-chart", "figure"),
             Output("model-performance", "figure"),
             Output("fuel-type-chart", "figure"),
-            Output("geo-map", "figure"),
             Output("sales-data-table", "data"),
         ],
         [
@@ -567,13 +585,26 @@ def register_callbacks(app, df_clean):
             empty_message = "No data available for the selected filters"
             placeholder = _build_empty_figure("No Data", empty_message)
             return (
-                placeholder,
-                placeholder,
-                placeholder,
-                placeholder,
-                _build_empty_figure("Sales by City", empty_message),
+                placeholder,  # sales-trend-chart
+                placeholder,  # avg-price-model-chart
+                _build_empty_figure("Sales by City (Revenue)", empty_message),
+                _build_empty_figure("Sales by City (Volume)", empty_message),
+                _build_empty_figure("Customer Segment", empty_message),
+                placeholder,  # model-performance
+                placeholder,  # fuel-type-chart
                 [],
             )
+        # Customer Segment Pie Chart
+        segment_data = filtered_df["Customer_Segment"].value_counts().reset_index()
+        segment_data.columns = ["Customer_Segment", "Count"]
+        segment_pie_fig = go.Figure(
+            go.Pie(
+                labels=segment_data["Customer_Segment"],
+                values=segment_data["Count"],
+                hole=0.5,
+            )
+        )
+        segment_pie_fig.update_layout(title="Customer Segment", title_x=0.5)
 
         # Sales Trend
         monthly_data = (
@@ -681,7 +712,7 @@ def register_callbacks(app, df_clean):
         )
         fuel_fig.update_layout(title="Sales by Fuel Type", title_x=0.5)
 
-        # Geo Map
+        # Geo Map & City Sales Volume
         city_data = (
             filtered_df.groupby("Dealer_City")
             .agg(
@@ -690,9 +721,13 @@ def register_callbacks(app, df_clean):
             )
             .reset_index()
         )
+        # Geo Map
         if city_data.empty:
             geo_fig = _build_empty_figure(
-                "Sales by City", "No city level data for this selection"
+                "Sales by City (Revenue)", "No city level data for this selection"
+            )
+            city_sales_volume_fig = _build_empty_figure(
+                "Sales by City (Volume)", "No city level data for this selection"
             )
         else:
             city_data["Revenue_Label"] = city_data["Total_Revenue"].apply(
@@ -708,7 +743,10 @@ def register_callbacks(app, df_clean):
             city_data = city_data.dropna(subset=["lat", "lon"])
             if city_data.empty:
                 geo_fig = _build_empty_figure(
-                    "Sales by City", "Unable to resolve city coordinates"
+                    "Sales by City (Revenue)", "Unable to resolve city coordinates"
+                )
+                city_sales_volume_fig = _build_empty_figure(
+                    "Sales by City (Volume)", "Unable to resolve city coordinates"
                 )
             else:
                 sales_counts = city_data["Total_Sales"]
@@ -742,7 +780,7 @@ def register_callbacks(app, df_clean):
                     )
                 )
                 geo_fig.update_layout(
-                    title="Sales by City",
+                    title="Sales by City (Revenue)",
                     title_x=0.5,
                     geo=dict(
                         scope="asia",
@@ -759,6 +797,27 @@ def register_callbacks(app, df_clean):
                     ),
                     margin=dict(l=0, r=0, t=60, b=0),
                 )
+                # City Sales Volume Bar Chart
+                city_sales_sorted = city_data.sort_values(
+                    "Total_Sales", ascending=False
+                )
+                city_sales_volume_fig = go.Figure(
+                    go.Bar(
+                        x=city_sales_sorted["Dealer_City"],
+                        y=city_sales_sorted["Total_Sales"],
+                        marker_color="#1976D2",
+                        text=city_sales_sorted["Total_Sales"],
+                        textposition="outside",
+                        name="Sales Volume",
+                    )
+                )
+                city_sales_volume_fig.update_layout(
+                    title="Sales by City (Volume)",
+                    title_x=0.5,
+                    xaxis_title="City",
+                    yaxis_title="Number of Sales",
+                    margin=dict(l=40, r=20, t=60, b=40),
+                )
 
         # Table Data
         table_data = filtered_df.copy()
@@ -766,11 +825,13 @@ def register_callbacks(app, df_clean):
         table_data = table_data.to_dict("records")
 
         return (
-            trend_fig,
-            avg_price_fig,
-            model_fig,
-            fuel_fig,
-            geo_fig,
+            trend_fig,  # sales-trend-chart
+            avg_price_fig,  # avg-price-model-chart
+            geo_fig,  # geo-map (Sales by City Revenue)
+            city_sales_volume_fig,  # city-sales-volume-chart
+            segment_pie_fig,  # segment-pie-chart
+            model_fig,  # model-performance
+            fuel_fig,  # fuel-type-chart
             table_data,
         )
 
