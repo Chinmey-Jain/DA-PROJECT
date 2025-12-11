@@ -362,7 +362,9 @@ def get_app_layout(df_clean):
             dbc.Row(
                 [
                     dbc.Col(
-                        dcc.Graph(id="segment-pie-chart"), width=4, className="mb-4"
+                        dcc.Graph(id="city-avg-revenue-chart"),
+                        width=4,
+                        className="mb-4",
                     ),
                     dbc.Col(
                         dcc.Graph(id="model-performance"), width=4, className="mb-4"
@@ -539,7 +541,7 @@ def register_callbacks(app, df_clean):
             Output("avg-price-model-chart", "figure"),
             Output("geo-map", "figure"),
             Output("city-sales-volume-chart", "figure"),
-            Output("segment-pie-chart", "figure"),
+            Output("city-avg-revenue-chart", "figure"),
             Output("model-performance", "figure"),
             Output("fuel-type-chart", "figure"),
             Output("sales-data-table", "data"),
@@ -589,22 +591,61 @@ def register_callbacks(app, df_clean):
                 placeholder,  # avg-price-model-chart
                 _build_empty_figure("Sales by City (Revenue)", empty_message),
                 _build_empty_figure("Sales by City (Volume)", empty_message),
-                _build_empty_figure("Customer Segment", empty_message),
+                _build_empty_figure("City-wise Avg Revenue", empty_message),
                 placeholder,  # model-performance
                 placeholder,  # fuel-type-chart
                 [],
             )
-        # Customer Segment Pie Chart
-        segment_data = filtered_df["Customer_Segment"].value_counts().reset_index()
-        segment_data.columns = ["Customer_Segment", "Count"]
-        segment_pie_fig = go.Figure(
-            go.Pie(
-                labels=segment_data["Customer_Segment"],
-                values=segment_data["Count"],
-                hole=0.5,
+        # City-wise Average Revenue Chart
+        city_data = (
+            filtered_df.groupby("Dealer_City")
+            .agg(
+                Total_Sales=("Model", "count"),
+                Total_Revenue=("Ex_Showroom_Price", "sum"),
             )
+            .reset_index()
         )
-        segment_pie_fig.update_layout(title="Customer Segment", title_x=0.5)
+        city_avg_rev_fig = _build_empty_figure("City-wise Avg Revenue", "No city data")
+        # City-wise Average Revenue Chart
+        city_data = (
+            filtered_df.groupby("Dealer_City")
+            .agg(
+                Total_Sales=("Model", "count"),
+                Total_Revenue=("Ex_Showroom_Price", "sum"),
+            )
+            .reset_index()
+        )
+        if not city_data.empty:
+            city_data["Avg_Revenue"] = (
+                city_data["Total_Revenue"] / city_data["Total_Sales"]
+            )
+            city_avg_sorted = city_data.sort_values("Avg_Revenue", ascending=False)
+            city_avg_rev_fig = go.Figure(
+                go.Bar(
+                    x=city_avg_sorted["Dealer_City"],
+                    y=city_avg_sorted["Avg_Revenue"],
+                    marker_color="#43A047",
+                    text=city_avg_sorted["Avg_Revenue"].apply(
+                        lambda v: format_currency(v, "INR", locale="en_IN")
+                    ),
+                    textposition="outside",
+                    name="Avg Revenue",
+                )
+            )
+            city_avg_rev_fig.update_layout(
+                title="City-wise Avg Revenue",
+                title_x=0.5,
+                xaxis_title="City",
+                yaxis=dict(
+                    title="Avg Revenue per Sale (₹ L)",
+                    tickprefix="₹ ",
+                    separatethousands=True,
+                    tickformat="~s",
+                    tickvals=[int(lakh) * 100000 for lakh in [0, 2, 4, 6, 8, 10, 12, 14, 16]],
+                    ticktext=["0", "2", "4", "6", "8", "10", "12", "14", "16"],
+                ),
+                margin=dict(l=40, r=20, t=60, b=40),
+            )
 
         # Sales Trend
         monthly_data = (
@@ -829,7 +870,7 @@ def register_callbacks(app, df_clean):
             avg_price_fig,  # avg-price-model-chart
             geo_fig,  # geo-map (Sales by City Revenue)
             city_sales_volume_fig,  # city-sales-volume-chart
-            segment_pie_fig,  # segment-pie-chart
+            city_avg_rev_fig,  # city-avg-revenue-chart
             model_fig,  # model-performance
             fuel_fig,  # fuel-type-chart
             table_data,
