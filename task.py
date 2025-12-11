@@ -705,12 +705,22 @@ def register_callbacks(app, df_clean):
         return trend_fig, model_fig, fuel_fig, geo_fig, table_data
 
 
-def main():
-    """Main function to run the Dash app."""
+def initialize_dashboard() -> Dash:
+    """Build and return the Dash application ready for WSGI/CLI hosts."""
+
     load_cache()
     df = load_sales_data(file_path)
     df_clean = clean_sales_data(df)
-    app = create_app(df_clean)
+    return create_app(df_clean)
+
+
+app = initialize_dashboard()
+server = app.server
+
+
+def main():
+    """Main function to run the Dash app locally."""
+
     app.run(debug=True)
 
 
