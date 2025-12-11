@@ -383,7 +383,7 @@ def get_app_layout(df_clean):
             dbc.Row(
                 dbc.Col(
                     html.Div(
-                        "Tata Motors Sales Dashboard | Made by ",
+                        "Tata Motors Sales Dashboard | Made by Group 10",
                         style={
                             "textAlign": "center",
                             "padding": "10px 0",
